@@ -1,171 +1,144 @@
 package org.example;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.*;
+import org.apache.http.client.methods.HttpDelete;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.http.HttpClient;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
 
-/* Використовую Apache HTTPClient для взаємодії з API
-(це поки що найскладніша тема, написала код тільки завдяки схожим програмам з форумів
-думаю, що ще далеко не все зрозуміла, що написала)*/
 public class Main {
-
-    private static final String url = "https://jsonplaceholder.typicode.com";
-    private CloseableHttpClient client = HttpClientBuilder.create().build();
+    public static final String url = "https://jsonplaceholder.typicode.com";
+    private final CloseableHttpClient client = HttpClientBuilder.create().build();
 
     public static void main(String[] args) throws IOException {
         Main main = new Main();
-        JSONObject user = new JSONObject();
-        user.put("name", "boris");
-        user.put("username", "borisi");
-        user.put("email", "borisi@example.com");
-        JSONObject createdUser = main.createUser(user);
-        System.out.println("Створений користувач: " + createdUser.toString());
-
-        List<JSONObject> userGet = main.getAllUsers();
-        System.out.println("Усі користувачі: " + userGet.toString());
-
-
-        JSONArray todos = main.getToDos(3);
-        System.out.println("Відкриті завдання " + todos.toString());
+        Geo geo = new Geo("3574", "45765");
+        Address address = new Address("ahmatovoy", "a", "Berlin", "85847", geo);
+        Company company = new Company("BorInc", "for every fish there is a bigger fish", "fish delivery");
+        User user = new User(12, "boris", "bor", "bor@gm.com", "96348", "bor.com", address, company);
+        User createdUser = main.createUser(user);
+        System.out.println("New user " + createdUser);
+        int successsCode = main.deleteUser(user);
+        System.out.println("Delete code " + successsCode);
+        List<Comment> comments = main.getComments(1);
+        main.saveComments(2, 1, comments);
+        List<Todo> todos = main.getToDos(1);
+        for(Todo todo : todos){
+            System.out.println(todo);
+        }
 
     }
-
-    public JSONObject createUser(JSONObject user) throws IOException {
-        //створюємо та встановлюємо параметри для httpPost
+    public User createUser(User user) throws IOException {
         HttpPost post = new HttpPost(url + "/users");
-        StringEntity entity = new StringEntity(user.toString());
-        post.setEntity(entity);
-        post.setHeader("Accept", "application/json");
-        post.setHeader("Content-type", "application/json");
-        //отримуємо відповідь серверу
+        Gson gson = new Gson();
+        String userGson = gson.toJson(user);
+        StringEntity requestEntity = new StringEntity(userGson, ContentType.APPLICATION_JSON);
+        post.setEntity(requestEntity);
         HttpResponse response = client.execute(post);
         HttpEntity responseEntity = response.getEntity();
-        String responseBody = responseEntity != null ?
-                new Scanner(responseEntity.getContent(), StandardCharsets.UTF_8.name()).useDelimiter("\\Z").next() : "";
-        //створюємо новий JSON об'єкт
-        JSONObject responseJson = new JSONObject(responseBody);
-        //створюємо новий ID
-        int newId = responseJson.getInt("id") + 1;
-        user.put("id", newId);
-        return user;
+        String responseJson = EntityUtils.toString(responseEntity);
+        return gson.fromJson(responseJson, User.class);
     }
 
-    public JSONObject updateUser(JSONObject user) throws IOException {
-        HttpPut put = new HttpPut(url + "/users/" + user.getInt("id"));
-        StringEntity entity = new StringEntity(user.toString());
-        put.setEntity(entity);
-        put.setHeader("Accept", "application/json");
-        put.setHeader("Content-type", "application/json");
+    public User updateUser(User user) throws IOException {
+        HttpPut put = new HttpPut(url + "/users/" + user.getId());
+        Gson gson = new Gson();
+        String userGson = gson.toJson(user);
+        StringEntity requestEntity = new StringEntity(userGson, "application/json");
+        put.setEntity(requestEntity);
         HttpResponse response = client.execute(put);
         HttpEntity responseEntity = response.getEntity();
-        String responseBody = responseEntity != null ?
-                new Scanner(responseEntity.getContent(), StandardCharsets.UTF_8.name()).useDelimiter("\\Z").next() : "";
-        //створюємо новий JSON об'єкт
-        JSONObject responseJson = new JSONObject(responseBody);
-        return responseJson;
+        String responseJson = EntityUtils.toString(responseEntity);
+        return gson.fromJson(responseJson, User.class);
     }
 
-    public int deleteUser(int userId) throws IOException {
-        HttpDelete delete = new HttpDelete(url + "/users/" + userId);
+    public int deleteUser(User user) throws IOException {
+        HttpDelete delete = new HttpDelete(url + "/users/" + user.getId());
         HttpResponse response = client.execute(delete);
         return response.getStatusLine().getStatusCode();
     }
 
-public List<JSONObject> getAllUsers() throws IOException {
-    HttpGet request = new HttpGet(url + "/users");
-    request.setHeader("Accept", "application/json");
-    List<JSONObject> users = new ArrayList<>();
-    try (CloseableHttpResponse response = client.execute(request)) {
-        if (response.getStatusLine().getStatusCode() == 200) { //200 = successful request
-            HttpEntity entity = response.getEntity();
-            String responseBody = EntityUtils.toString(entity);
-            JSONArray jsonArray = new JSONArray(responseBody);
-            //усіх користувачів додаємо у список
-            for (int i = 0; i < jsonArray.length(); i++) {
-                JSONObject jsonObject = jsonArray.getJSONObject(i);
-                users.add(jsonObject);
-            }
-        } else {
-            throw new RuntimeException("Failed to get all users: " + response.getStatusLine().getStatusCode());
-        }
+    public List<User> getUsers() throws IOException {
+        HttpGet get = new HttpGet(url + "/users");
+        HttpResponse response = client.execute(get);
+        HttpEntity responseEntity = response.getEntity();
+        String responseJson = EntityUtils.toString(responseEntity);
+        Gson gson = new Gson();
+        UsersRequest users = gson.fromJson(responseJson, UsersRequest.class);
+        return users.getUsers();
     }
-    return users;
-}
 
-
-    public JSONObject getUserById(int userId) throws IOException {
+    public User getUserById(int userId) throws IOException {
         HttpGet get = new HttpGet(url + "/users/" + userId);
         HttpResponse response = client.execute(get);
-        HttpEntity entity = response.getEntity();
-        String responseBody = entity != null ?
-                new Scanner(entity.getContent(), StandardCharsets.UTF_8.name()).useDelimiter("\\Z").next() : "";
-        JSONObject responseJson = new JSONObject(responseBody);
-        return responseJson;
+        HttpEntity responseEntity = response.getEntity();
+        String responseJson = EntityUtils.toString(responseEntity);
+        Gson gson = new Gson();
+        return gson.fromJson(responseJson, User.class);
     }
 
-    public JSONObject getUserByUsername(String username) throws IOException {
+    public User getUserByUsername(String username) throws IOException {
         HttpGet get = new HttpGet(url + "/users?username=" + username);
         HttpResponse response = client.execute(get);
-        HttpEntity entity = response.getEntity();
-        String responseBody = entity != null ?
-                new Scanner(entity.getContent(), StandardCharsets.UTF_8.name()).useDelimiter("\\Z").next() : "";
-        JSONObject responseJson = new JSONObject(responseBody);
-        return responseJson;
+        HttpEntity responseEntity = response.getEntity();
+        String responseJson = EntityUtils.toString(responseEntity);
+        Gson gson = new Gson();
+        return gson.fromJson(responseJson, User.class);
     }
 
-    //наступні 3 методи відповідають за збереження коментарів до файлу
-    public JSONObject getPost(int userId) throws IOException {
+    private List<Post> getPosts(int userId) throws IOException {
         HttpGet get = new HttpGet(url + "/users/" + userId + "/posts");
         HttpResponse response = client.execute(get);
         HttpEntity responseEntity = response.getEntity();
-        String responseBody = responseEntity != null ?
-                new Scanner(responseEntity.getContent(), StandardCharsets.UTF_8.name()).useDelimiter("\\Z").next() : "";
-        JSONArray posts = new JSONArray(responseBody);
-        return posts.getJSONObject(posts.length() - 1);
+
+        String responseJson = EntityUtils.toString(responseEntity);
+        Gson gson = new Gson();
+        return gson.fromJson(responseJson, new TypeToken<List<Post>>(){}.getType());
     }
 
-    public JSONArray getComments(int postNumber) throws IOException {
-        HttpGet get = new HttpGet(url + "/posts/" + postNumber + "/comments");
+    private List<Comment> getComments(int postId) throws IOException {
+        HttpGet get = new HttpGet(url + "/posts/" + postId + "/comments");
         HttpResponse response = client.execute(get);
         HttpEntity responseEntity = response.getEntity();
-        String responseBody = responseEntity != null ?
-                new Scanner(responseEntity.getContent(), StandardCharsets.UTF_8.name()).useDelimiter("\\Z").next() : "";
-        JSONArray comments = new JSONArray(responseBody);
-        return comments;
+        String responseJson = EntityUtils.toString(responseEntity);
+        Gson gson = new Gson();
+        return gson.fromJson(responseJson, new TypeToken<List<Post>>(){}.getType());
     }
 
-    public void saveComments(int userId, int postNumber, JSONArray comments) throws IOException {
-        String filename = "user-" + userId + "post-" + postNumber + "-comments.json";
+    public void saveComments(int userId, int postId, List<Comment> comments) throws IOException {
+        String filename = "user-" + userId + "post-" + postId + "-comments.json";
         File file = new File(filename);
         FileWriter writer = new FileWriter(file);
-        writer.write(comments.toString());
+        Gson gson = new Gson();
+        String commentsJson = gson.toJson(comments);
+        writer.write(commentsJson);
         writer.close();
 
     }
 
-    public JSONArray getToDos(int userId) throws IOException {
+    public List<Todo> getToDos(int userId) throws IOException {
         HttpGet get = new HttpGet(url + "/users/" + userId + "/todos?completed=false");
         HttpResponse response = client.execute(get);
         HttpEntity responseEntity = response.getEntity();
-        String responseBody = responseEntity != null ?
-                new Scanner(responseEntity.getContent(), StandardCharsets.UTF_8.name()).useDelimiter("\\Z").next() : "";
-        JSONArray todos = new JSONArray("[" + responseBody + "]");
-        return todos;
+        String responseJson = EntityUtils.toString(responseEntity);
+        Gson gson = new Gson();
+        return gson.fromJson(responseJson, new TypeToken<List<Todo>>(){}.getType());
     }
+
+
 }
+
+
